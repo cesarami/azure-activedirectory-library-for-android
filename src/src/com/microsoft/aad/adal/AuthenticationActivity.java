@@ -1113,7 +1113,7 @@ public class AuthenticationActivity extends Activity {
 
         @Override
         protected void onPostExecute(TokenTaskResult result) {
-            Logger.v(TAG, "Token task returns the result");
+            Logger.i(TAG, "Token task returns the result", "");
             displaySpinner(false);
             Intent intent = new Intent();
             if (result.taskResult != null) {

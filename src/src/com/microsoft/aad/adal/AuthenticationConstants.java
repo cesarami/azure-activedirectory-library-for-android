@@ -180,6 +180,8 @@ public class AuthenticationConstants {
 
     public static final class Broker {
 
+        public static final String BROKER_FEATURE_MULTI_USER = "broker.feature.multi.user";
+        
         public static final int BROKER_REQUEST_ID = 1177;
 
         public static final String BROKER_REQUEST = "com.microsoft.aadbroker.adal.broker.request";

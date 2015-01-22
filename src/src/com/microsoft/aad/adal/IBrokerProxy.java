@@ -57,10 +57,11 @@ interface IBrokerProxy {
     /**
      * only gets intent to start from calling app's activity.
      * 
-     * @param request
+     * @param request   
+     * @param cachedItemToBroker 
      * @return Intent
      */
-    Intent getIntentForBrokerActivity(final AuthenticationRequest request);
+    Intent getIntentForBrokerActivity(final AuthenticationRequest request, AuthenticationResult cachedItemToBroker);
 
     /*
      * Gets user info from broker.
@@ -68,4 +69,14 @@ interface IBrokerProxy {
      */
     UserInfo[] getBrokerUsers() throws OperationCanceledException, AuthenticatorException,
             IOException;
+
+    /**
+     * Gets multi user feature support from broker.
+     * @return
+     * @throws IOException 
+     * @throws AuthenticatorException 
+     * @throws OperationCanceledException 
+     */
+    boolean hasMultiUserSupport() throws OperationCanceledException, AuthenticatorException, IOException;
+
 }

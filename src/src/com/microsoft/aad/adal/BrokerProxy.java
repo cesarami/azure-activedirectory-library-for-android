@@ -58,6 +58,8 @@ class BrokerProxy implements IBrokerProxy {
 
     private Handler mHandler;
 
+    private Bundle mFeatureBundle;
+
     private final String mBrokerTag;
 
     private static final String KEY_ACCOUNT_LIST_DELIM = "|";
@@ -72,9 +74,11 @@ class BrokerProxy implements IBrokerProxy {
 
     public BrokerProxy() {
         mBrokerTag = AuthenticationSettings.INSTANCE.getBrokerSignature();
+        mFeatureBundle = null;
     }
 
     public BrokerProxy(final Context ctx) {
+        mFeatureBundle = null;
         mContext = ctx;
         mAcctManager = AccountManager.get(mContext);
         mHandler = new Handler(mContext.getMainLooper());
@@ -89,7 +93,7 @@ class BrokerProxy implements IBrokerProxy {
     @Override
     public boolean canSwitchToBroker() {
         String packageName = mContext.getPackageName();
-        
+
         // ADAL switches broker for following conditions:
         // 1- app is not skipping the broker
         // 2- permissions are set in the manifest,
@@ -182,7 +186,7 @@ class BrokerProxy implements IBrokerProxy {
         Account targetAccount = accountList[0];
 
         if (targetAccount != null) {
-            Bundle brokerOptions = getBrokerOptions(request);
+            Bundle brokerOptions = getBrokerOptions(request, null);
 
             // blocking call to get token from cache or refresh request in
             // background at Authenticator
@@ -330,14 +334,16 @@ class BrokerProxy implements IBrokerProxy {
      * from calling app's activity to control the lifetime of the activity.
      */
     @Override
-    public Intent getIntentForBrokerActivity(final AuthenticationRequest request) {
+    public Intent getIntentForBrokerActivity(final AuthenticationRequest request,
+            AuthenticationResult cachedItemToBroker) {
         Intent intent = null;
         AccountManagerFuture<Bundle> result = null;
         try {
             // Callback is not passed since it is making a blocking call to get
             // intent. Activity needs to be launched from calling app
             // to get the calling app's metadata if needed at BrokerActivity.
-            Bundle addAccountOptions = getBrokerOptions(request);
+            Bundle addAccountOptions = getBrokerOptions(request, cachedItemToBroker);
+
             result = mAcctManager.addAccount(AuthenticationConstants.Broker.BROKER_ACCOUNT_TYPE,
                     AuthenticationConstants.Broker.AUTHTOKEN_TYPE, null, addAccountOptions, null,
                     null, mHandler);
@@ -372,7 +378,9 @@ class BrokerProxy implements IBrokerProxy {
         return intent;
     }
 
-    private Bundle getBrokerOptions(final AuthenticationRequest request) {
+    private Bundle getBrokerOptions(final AuthenticationRequest request,
+            AuthenticationResult cachedItemToBroker) {
+
         Bundle brokerOptions = new Bundle();
         // request needs to be parcelable to send across process
         brokerOptions.putInt(AuthenticationConstants.Browser.REQUEST_ID, request.getRequestId());
@@ -386,11 +394,63 @@ class BrokerProxy implements IBrokerProxy {
                 request.getClientId());
         brokerOptions.putString(AuthenticationConstants.Broker.ADAL_VERSION_KEY,
                 request.getVersion());
+        if (request.getCorrelationId() != null) {
+            brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_CORRELATIONID, request
+                    .getCorrelationId().toString());
+        }
 
-        // allowing single user for now
-        brokerOptions
-                .putString(AuthenticationConstants.Broker.ACCOUNT_LOGIN_HINT, getCurrentUser());
-        brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_NAME, getCurrentUser());
+        try {
+            if (hasMultiUserSupport()) {
+                brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_ACCESS_TOKEN,
+                        cachedItemToBroker.getAccessToken());
+                brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_REFRESH_TOKEN,
+                        cachedItemToBroker.getRefreshToken());
+
+                if (cachedItemToBroker.getUserInfo() != null) {
+                    brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_USERINFO_USERID,
+                            cachedItemToBroker.getUserInfo().getUserId());
+                    brokerOptions.putString(
+                            AuthenticationConstants.Broker.ACCOUNT_USERINFO_USERID_DISPLAYABLE,
+                            cachedItemToBroker.getUserInfo().getDisplayableId());
+                    brokerOptions.putString(
+                            AuthenticationConstants.Broker.ACCOUNT_USERINFO_GIVEN_NAME,
+                            cachedItemToBroker.getUserInfo().getGivenName());
+                    brokerOptions.putString(
+                            AuthenticationConstants.Broker.ACCOUNT_USERINFO_FAMILY_NAME,
+                            cachedItemToBroker.getUserInfo().getFamilyName());
+                    brokerOptions.putString(
+                            AuthenticationConstants.Broker.ACCOUNT_USERINFO_IDENTITY_PROVIDER,
+                            cachedItemToBroker.getUserInfo().getIdentityProvider());
+                    brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_LOGIN_HINT,
+                            cachedItemToBroker.getUserInfo().getDisplayableId());
+                    brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_NAME,
+                            cachedItemToBroker.getUserInfo().getDisplayableId());
+                } else {
+                    
+                    // This user will be added to Broker side.
+                    brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_LOGIN_HINT,
+                            request.getLoginHint());
+                    brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_NAME,
+                            request.getBrokerAccountName());
+                }
+            } else {
+                // single user mode
+                brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_LOGIN_HINT,
+                        getCurrentUser());
+                brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_NAME,
+                        getCurrentUser());
+            }
+        } catch (OperationCanceledException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        } catch (AuthenticatorException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        } catch (IOException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+
         brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_PROMPT, request.getPrompt()
                 .name());
         return brokerOptions;
@@ -477,7 +537,8 @@ class BrokerProxy implements IBrokerProxy {
     public UserInfo[] getBrokerUsers() throws OperationCanceledException, AuthenticatorException,
             IOException {
 
-        // Calling this on main thread will cause exception since this is waiting on AccountManagerFuture 
+        // Calling this on main thread will cause exception since this is
+        // waiting on AccountManagerFuture
         if (Looper.myLooper() == Looper.getMainLooper()) {
             throw new IllegalArgumentException("Calling getBrokerUsers on main thread");
         }
@@ -492,7 +553,7 @@ class BrokerProxy implements IBrokerProxy {
             // get info for each user
             UserInfo[] users = new UserInfo[accountList.length];
             for (int i = 0; i < accountList.length; i++) {
-                
+
                 // Use AccountManager Api method to get extended user info
                 AccountManagerFuture<Bundle> result = mAcctManager.updateCredentials(
                         accountList[i], AuthenticationConstants.Broker.AUTHTOKEN_TYPE, bundle,
@@ -500,21 +561,54 @@ class BrokerProxy implements IBrokerProxy {
                 Logger.v(TAG, "Waiting for the result");
                 Bundle userInfoBundle = result.getResult();
 
-                users[i] = new UserInfo(
-                        userInfoBundle
-                                .getString(AuthenticationConstants.Broker.ACCOUNT_USERINFO_USERID),
-                        userInfoBundle
-                                .getString(AuthenticationConstants.Broker.ACCOUNT_USERINFO_GIVEN_NAME),
-                        userInfoBundle
-                                .getString(AuthenticationConstants.Broker.ACCOUNT_USERINFO_FAMILY_NAME),
-                        userInfoBundle
-                                .getString(AuthenticationConstants.Broker.ACCOUNT_USERINFO_IDENTITY_PROVIDER),
-                        userInfoBundle
-                                .getString(AuthenticationConstants.Broker.ACCOUNT_USERINFO_USERID_DISPLAYABLE));
+                if (userInfoBundle != null) {
+                    users[i] = new UserInfo(
+                            userInfoBundle
+                                    .getString(AuthenticationConstants.Broker.ACCOUNT_USERINFO_USERID),
+                            userInfoBundle
+                                    .getString(AuthenticationConstants.Broker.ACCOUNT_USERINFO_GIVEN_NAME),
+                            userInfoBundle
+                                    .getString(AuthenticationConstants.Broker.ACCOUNT_USERINFO_FAMILY_NAME),
+                            userInfoBundle
+                                    .getString(AuthenticationConstants.Broker.ACCOUNT_USERINFO_IDENTITY_PROVIDER),
+                            userInfoBundle
+                                    .getString(AuthenticationConstants.Broker.ACCOUNT_USERINFO_USERID_DISPLAYABLE));
+                }
             }
 
             return users;
         }
         return null;
     }
+
+    @Override
+    public boolean hasMultiUserSupport() throws OperationCanceledException, AuthenticatorException,
+            IOException {
+
+        if (mFeatureBundle == null) {
+            // Calling this on main thread will cause exception since this is
+            // waiting on AccountManagerFuture
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                throw new IllegalArgumentException("Calling authenticator method on main thread");
+            }
+
+            // Offers the user an opportunity to change an authenticator's
+            // settings.
+            // These properties are for the authenticator in general, not a
+            // particular account. Not all authenticators support this method.
+            // This method may be called from any thread, but the returned
+            // AccountManagerFuture must not be used on the main thread.
+            // This method requires the caller to hold the permission
+            // MANAGE_ACCOUNTS.
+            AccountManagerFuture<Bundle> result = mAcctManager.editProperties(
+                    AuthenticationConstants.Broker.BROKER_ACCOUNT_TYPE, null, null, null);
+
+            Logger.v(TAG, "Waiting for the result");
+            mFeatureBundle = result.getResult();
+        }
+
+        return mFeatureBundle != null ? mFeatureBundle.getBoolean(
+                AuthenticationConstants.Broker.BROKER_FEATURE_MULTI_USER, false) : false;
+    }
+
 }

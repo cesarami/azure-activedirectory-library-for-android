@@ -69,6 +69,8 @@ public class AuthenticationContext {
 
     private boolean mAuthorityValidated = false;
 
+    private boolean mBrokerSupportsMultiUser = false;
+    
     private ITokenCacheStore mTokenCacheStore;
 
     private static final ReentrantReadWriteLock RWL = new ReentrantReadWriteLock();
@@ -1125,7 +1127,7 @@ public class AuthenticationContext {
 
     private AuthenticationResult acquireTokenAfterValidation(CallbackHandler callbackHandle,
             final IWindowComponent activity, final boolean useDialog,
-            final AuthenticationRequest request) {
+            final AuthenticationRequest request) { 
         Logger.v(TAG, "Token request started");
 
         // BROKER flow intercepts here
@@ -1176,15 +1178,29 @@ public class AuthenticationContext {
                 putWaitingRequest(callbackHandle.callback.hashCode(),
                         new AuthenticationRequestState(callbackHandle.callback.hashCode(), request,
                                 callbackHandle.callback));
+                
+                AuthenticationResult cachedItemToBroker = null;
+                
                 if (result != null && result.isInitialRequest()) {
-                    Logger.v(TAG, "Initial request to authenticator");
-                    // Record the initial request but not force a prompt
+                    Logger.i(TAG, "Initial request to authenticator", "");
+                    // Initial request should transfer app specific AT,RT to broker
+                    cachedItemToBroker = getItemFromCache(request);
+                    if (cachedItemToBroker != null && isUserMisMatch(request, cachedItemToBroker)) {
+                        if (callbackHandle.callback != null) {
+                            callbackHandle.onError(new AuthenticationException(
+                                    ADALError.AUTH_FAILED_USER_MISMATCH));
+                            return null;
+                        } else {
+                            throw new AuthenticationException(ADALError.AUTH_FAILED_USER_MISMATCH);
+                        }     
+                    }
                 }
 
+                                
                 // onActivityResult will receive the response
                 // Activity needs to launch to record calling app for this
                 // account
-                Intent brokerIntent = mBrokerProxy.getIntentForBrokerActivity(request);
+                Intent brokerIntent = mBrokerProxy.getIntentForBrokerActivity(request, cachedItemToBroker);
                 if (brokerIntent != null) {
                     try {
                         Logger.v(TAG, "Calling activity pid:" + android.os.Process.myPid()
@@ -1889,6 +1905,6 @@ public class AuthenticationContext {
         // Package manager does not report for ADAL
         // AndroidManifest files are not merged, so it is returning hard coded
         // value
-        return "1.0.9";
+        return "1.1.0";
     }
 }
