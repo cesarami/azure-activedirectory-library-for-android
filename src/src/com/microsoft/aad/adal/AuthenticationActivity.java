@@ -908,6 +908,12 @@ public class AuthenticationActivity extends Activity {
 
                 // Record account in the AccountManager service
                 try {
+                    String tokenlog = String.format("accessTokenId:%s refreshtokenId:%s",
+                            StringExtensions.createHash(result.taskResult.getAccessToken()),
+                            StringExtensions.createHash(result.taskResult.getRefreshToken()));
+
+                    Logger.v(TAG, tokenlog);
+
                     setAccount(result);
                 } catch (Exception exc) {
                     Logger.e(TAG, "Error in setting the account" + mRequest.getLogInfo(), "",
@@ -967,28 +973,34 @@ public class AuthenticationActivity extends Activity {
             }
         }
 
+        private boolean hasAccount(String name) {
+            Account[] accountList = mAccountManager
+                    .getAccountsByType(AuthenticationConstants.Broker.BROKER_ACCOUNT_TYPE);
+            if (accountList != null) {
+                for (Account account : accountList) {
+                    if (account.name.equalsIgnoreCase(name)) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+        
         private void setAccount(final TokenTaskResult result) throws InvalidKeyException,
                 InvalidKeySpecException, InvalidAlgorithmParameterException,
                 IllegalBlockSizeException, BadPaddingException, IOException {
-            // TODO Add token logging
-            // TODO update for new cache logic
-
             // Authenticator sets the account here and stores the tokens.
             try {
                 String name = mRequest.getBrokerAccountName();
-                Account[] accountList = mAccountManager
-                        .getAccountsByType(AuthenticationConstants.Broker.BROKER_ACCOUNT_TYPE);
 
-                if (accountList == null || accountList.length != 1) {
-                    result.taskResult = null;
-                    result.taskException = new AuthenticationException(
-                            ADALError.BROKER_SINGLE_USER_EXPECTED);
-                    return;
-                }
-
-                Account newaccount = accountList[0];
+                Account account = new Account(name, AuthenticationConstants.Broker.BROKER_ACCOUNT_TYPE);
                 
-                // Single user in authenticator is already created.
+                if(!hasAccount(name)){
+                    Logger.i(TAG,  "Add new account explicitly", "");
+                    mAccountManager.addAccountExplicitly(account, null, null);
+                }
+                
                 // This is only registering UID for the app
                 UserInfo userinfo = result.taskResult.getUserInfo();
                 if (userinfo == null || StringExtensions.IsNullOrBlank(userinfo.getUserId())) {
@@ -999,19 +1011,19 @@ public class AuthenticationActivity extends Activity {
                     mRequest.setLoginHint(name);
                 } else {
                     Logger.i(TAG, "Saving userinfo to account", "");
-                    mAccountManager.setUserData(newaccount,
+                    mAccountManager.setUserData(account,
                             AuthenticationConstants.Broker.ACCOUNT_USERINFO_USERID,
                             userinfo.getUserId());
-                    mAccountManager.setUserData(newaccount,
+                    mAccountManager.setUserData(account,
                             AuthenticationConstants.Broker.ACCOUNT_USERINFO_GIVEN_NAME,
                             userinfo.getGivenName());
-                    mAccountManager.setUserData(newaccount,
+                    mAccountManager.setUserData(account,
                             AuthenticationConstants.Broker.ACCOUNT_USERINFO_FAMILY_NAME,
                             userinfo.getFamilyName());
-                    mAccountManager.setUserData(newaccount,
+                    mAccountManager.setUserData(account,
                             AuthenticationConstants.Broker.ACCOUNT_USERINFO_IDENTITY_PROVIDER,
                             userinfo.getIdentityProvider());
-                    mAccountManager.setUserData(newaccount,
+                    mAccountManager.setUserData(account,
                             AuthenticationConstants.Broker.ACCOUNT_USERINFO_USERID_DISPLAYABLE,
                             userinfo.getDisplayableId());
                 }
@@ -1041,8 +1053,8 @@ public class AuthenticationActivity extends Activity {
 
                 // Single user and cache is stored per account
                 String key = CacheKey.createCacheKey(mRequest, null);
-                saveCacheKey(key, newaccount, mAppCallingUID);
-                mAccountManager.setUserData(newaccount, getBrokerAppCacheKey(cryptoHelper, key),
+                saveCacheKey(key, account, mAppCallingUID);
+                mAccountManager.setUserData(account, getBrokerAppCacheKey(cryptoHelper, key),
                         encrypted);
 
                 if (result.taskResult.getIsMultiResourceRefreshToken()) {
@@ -1051,8 +1063,8 @@ public class AuthenticationActivity extends Activity {
                     json = gson.toJson(itemMRRT);
                     encrypted = cryptoHelper.encrypt(json);
                     key = CacheKey.createMultiResourceRefreshTokenKey(mRequest, null);
-                    saveCacheKey(key, newaccount, mAppCallingUID);
-                    mAccountManager.setUserData(newaccount,
+                    saveCacheKey(key, account, mAppCallingUID);
+                    mAccountManager.setUserData(account,
                             getBrokerAppCacheKey(cryptoHelper, key), encrypted);
                 }
 
@@ -1060,7 +1072,7 @@ public class AuthenticationActivity extends Activity {
                 // in the background call without requiring server side
                 // validation
                 Logger.i(TAG, "Set calling uid:" + mAppCallingUID, "");
-                appendAppUIDToAccount(cryptoHelper, newaccount);
+                appendAppUIDToAccount(cryptoHelper, account);
             } catch (NoSuchAlgorithmException e) {
                 Logger.e(TAG, "Algorithm does not exist in the device", "",
                         ADALError.DEVICE_CACHE_IS_NOT_WORKING, e);

@@ -338,6 +338,7 @@ class BrokerProxy implements IBrokerProxy {
             AuthenticationResult cachedItemToBroker) {
         Intent intent = null;
         AccountManagerFuture<Bundle> result = null;
+
         try {
             // Callback is not passed since it is making a blocking call to get
             // intent. Activity needs to be launched from calling app
@@ -360,6 +361,7 @@ class BrokerProxy implements IBrokerProxy {
                 intent.putExtra(AuthenticationConstants.Broker.BROKER_REQUEST,
                         AuthenticationConstants.Broker.BROKER_REQUEST);
             }
+
         } catch (OperationCanceledException e) {
             Logger.e(TAG, "Authenticator cancels the request", "", ADALError.AUTH_FAILED_CANCELLED,
                     e);
@@ -368,11 +370,11 @@ class BrokerProxy implements IBrokerProxy {
             // TODO add retry logic since authenticator is not responding to
             // the request
             Logger.e(TAG, "Authenticator cancels the request", "",
-                    ADALError.BROKER_AUTHENTICATOR_NOT_RESPONDING);
+                    ADALError.BROKER_AUTHENTICATOR_NOT_RESPONDING, e);
         } catch (IOException e) {
             // Authenticator gets problem from webrequest or file read/write
             Logger.e(TAG, "Authenticator cancels the request", "",
-                    ADALError.BROKER_AUTHENTICATOR_IO_EXCEPTION);
+                    ADALError.BROKER_AUTHENTICATOR_IO_EXCEPTION, e);
         }
 
         return intent;
@@ -399,56 +401,43 @@ class BrokerProxy implements IBrokerProxy {
                     .getCorrelationId().toString());
         }
 
-        try {
-            if (hasMultiUserSupport()) {
-                brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_ACCESS_TOKEN,
-                        cachedItemToBroker.getAccessToken());
-                brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_REFRESH_TOKEN,
-                        cachedItemToBroker.getRefreshToken());
+        if (hasMultiUserSupport()) {
+            brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_ACCESS_TOKEN,
+                    cachedItemToBroker.getAccessToken());
+            brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_REFRESH_TOKEN,
+                    cachedItemToBroker.getRefreshToken());
 
-                if (cachedItemToBroker.getUserInfo() != null) {
-                    brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_USERINFO_USERID,
-                            cachedItemToBroker.getUserInfo().getUserId());
-                    brokerOptions.putString(
-                            AuthenticationConstants.Broker.ACCOUNT_USERINFO_USERID_DISPLAYABLE,
-                            cachedItemToBroker.getUserInfo().getDisplayableId());
-                    brokerOptions.putString(
-                            AuthenticationConstants.Broker.ACCOUNT_USERINFO_GIVEN_NAME,
-                            cachedItemToBroker.getUserInfo().getGivenName());
-                    brokerOptions.putString(
-                            AuthenticationConstants.Broker.ACCOUNT_USERINFO_FAMILY_NAME,
-                            cachedItemToBroker.getUserInfo().getFamilyName());
-                    brokerOptions.putString(
-                            AuthenticationConstants.Broker.ACCOUNT_USERINFO_IDENTITY_PROVIDER,
-                            cachedItemToBroker.getUserInfo().getIdentityProvider());
-                    brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_LOGIN_HINT,
-                            cachedItemToBroker.getUserInfo().getDisplayableId());
-                    brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_NAME,
-                            cachedItemToBroker.getUserInfo().getDisplayableId());
-                } else {
-                    
-                    // This user will be added to Broker side.
-                    brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_LOGIN_HINT,
-                            request.getLoginHint());
-                    brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_NAME,
-                            request.getBrokerAccountName());
-                }
-            } else {
-                // single user mode
+            if (cachedItemToBroker.getUserInfo() != null) {
+                brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_USERINFO_USERID,
+                        cachedItemToBroker.getUserInfo().getUserId());
+                brokerOptions.putString(
+                        AuthenticationConstants.Broker.ACCOUNT_USERINFO_USERID_DISPLAYABLE,
+                        cachedItemToBroker.getUserInfo().getDisplayableId());
+                brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_USERINFO_GIVEN_NAME,
+                        cachedItemToBroker.getUserInfo().getGivenName());
+                brokerOptions.putString(
+                        AuthenticationConstants.Broker.ACCOUNT_USERINFO_FAMILY_NAME,
+                        cachedItemToBroker.getUserInfo().getFamilyName());
+                brokerOptions.putString(
+                        AuthenticationConstants.Broker.ACCOUNT_USERINFO_IDENTITY_PROVIDER,
+                        cachedItemToBroker.getUserInfo().getIdentityProvider());
                 brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_LOGIN_HINT,
-                        getCurrentUser());
+                        cachedItemToBroker.getUserInfo().getDisplayableId());
                 brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_NAME,
-                        getCurrentUser());
+                        cachedItemToBroker.getUserInfo().getDisplayableId());
+            } else {
+
+                // This user will be added to Broker side.
+                brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_LOGIN_HINT,
+                        request.getLoginHint());
+                brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_NAME,
+                        request.getBrokerAccountName());
             }
-        } catch (OperationCanceledException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        } catch (AuthenticatorException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+        } else {
+            // single user mode. It only uses current user in the broker.
+            brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_LOGIN_HINT,
+                    getCurrentUser());
+            brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_NAME, getCurrentUser());
         }
 
         brokerOptions.putString(AuthenticationConstants.Broker.ACCOUNT_PROMPT, request.getPrompt()
@@ -582,8 +571,7 @@ class BrokerProxy implements IBrokerProxy {
     }
 
     @Override
-    public boolean hasMultiUserSupport() throws OperationCanceledException, AuthenticatorException,
-            IOException {
+    public boolean hasMultiUserSupport() {
 
         if (mFeatureBundle == null) {
             // Calling this on main thread will cause exception since this is
@@ -603,8 +591,22 @@ class BrokerProxy implements IBrokerProxy {
             AccountManagerFuture<Bundle> result = mAcctManager.editProperties(
                     AuthenticationConstants.Broker.BROKER_ACCOUNT_TYPE, null, null, null);
 
-            Logger.v(TAG, "Waiting for the result");
-            mFeatureBundle = result.getResult();
+            Logger.i(TAG, "Waiting for the editProperties result", "");
+            try {
+                if (result != null) {
+                    mFeatureBundle = result.getResult();
+                }
+                // If editProperties API is not supported, log the error.
+            } catch (OperationCanceledException e) {
+                Logger.e(TAG, "editProperties:OperationCanceledException:", e.getMessage(),
+                        ADALError.BROKER_AUTHENTICATOR_OPERATION_CANCEL, e);
+            } catch (AuthenticatorException e) {
+                Logger.e(TAG, "editProperties:AuthenticatorException:", e.getMessage(),
+                        ADALError.BROKER_AUTHENTICATOR_EXCEPTION, e);
+            } catch (IOException e) {
+                Logger.e(TAG, "editProperties:IOException:", e.getMessage(),
+                        ADALError.BROKER_AUTHENTICATOR_EXCEPTION, e);
+            }
         }
 
         return mFeatureBundle != null ? mFeatureBundle.getBoolean(

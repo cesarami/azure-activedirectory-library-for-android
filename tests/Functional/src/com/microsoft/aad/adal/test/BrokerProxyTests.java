@@ -591,8 +591,8 @@ public class BrokerProxyTests extends AndroidTestCase {
 
         // action
         Method m = ReflectionUtils.getTestMethod(brokerProxy, "getIntentForBrokerActivity",
-                authRequest.getClass());
-        Intent intent = (Intent)m.invoke(brokerProxy, authRequest);
+                authRequest.getClass(), AuthenticationResult.class);
+        Intent intent = (Intent)m.invoke(brokerProxy, authRequest, null);
 
         // assert
         assertNull("Intent is null", intent);
@@ -617,8 +617,8 @@ public class BrokerProxyTests extends AndroidTestCase {
 
         // action
         Method m = ReflectionUtils.getTestMethod(brokerProxy, "getIntentForBrokerActivity",
-                authRequest.getClass());
-        Intent intent = (Intent)m.invoke(brokerProxy, authRequest);
+                authRequest.getClass(), AuthenticationResult.class);
+        Intent intent = (Intent)m.invoke(brokerProxy, authRequest, null);
 
         // assert
         assertNotNull("intent is not null", intent);

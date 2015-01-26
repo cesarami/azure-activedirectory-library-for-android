@@ -322,6 +322,11 @@ public enum ADALError {
     BROKER_AUTHENTICATOR_NOT_RESPONDING("Authenticator is not responding"),
 
     /**
+     * Operation is cancelled at Authenticator.
+     */
+    BROKER_AUTHENTICATOR_OPERATION_CANCEL("Operation is cancelled at Authenticator"),
+    
+    /**
      * Authenticator error.
      */
     BROKER_AUTHENTICATOR_ERROR_GETAUTHTOKEN("Authenticator error"),
@@ -345,6 +350,8 @@ public enum ADALError {
      * Authenticator has IO Exception.
      */
     BROKER_AUTHENTICATOR_IO_EXCEPTION("Authenticator has IO Exception"),
+    
+    BROKER_AUTHENTICATOR_EXCEPTION("Authenticator has Exception"),
 
     /**
      * Signature could not be verified.

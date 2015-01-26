@@ -139,7 +139,7 @@ public class AuthenticationActivityUnitTest extends ActivityUnitTestCase<Authent
         assertNotNull(webview);
 
         // Javascript enabled
-        assertTrue(webview.getSettings().getJavaScriptEnabled());       
+        assertTrue(webview.getSettings().getJavaScriptEnabled());
     }
 
     @SmallTest
@@ -302,47 +302,110 @@ public class AuthenticationActivityUnitTest extends ActivityUnitTestCase<Authent
                 .getStringExtra(AuthenticationConstants.Broker.ACCOUNT_USERINFO_FAMILY_NAME));
     }
 
+    class BrokerTest {
+
+        Object mAuthRequest = null;
+
+        String mTestPackageName = null;
+
+        String mUserName = null;
+
+        String mUrlRequest = null;
+
+        MockWebRequestHandler mWebrequest = null;
+
+        AccountManager mMockAct = null;
+        
+        Account mDefaultAccount = null;
+
+        public BrokerTest() {
+            mUserName = "admin@aaltests.onmicrosoft.com";
+            mDefaultAccount = new Account(mUserName,
+                    AuthenticationConstants.Broker.BROKER_ACCOUNT_TYPE);
+            mMockAct = mock(AccountManager.class);
+        }
+
+        private void setAuthenticationRequest() throws IllegalArgumentException,
+                ClassNotFoundException, NoSuchMethodException, InstantiationException,
+                IllegalAccessException, InvocationTargetException {
+            mAuthRequest = AuthenticationContextTest.createAuthenticationRequest(
+                    "https://login.windows.net/test.test.com",
+                    "https://omercantest.onmicrosoft.com/AllHandsTry", "client", "redirect",
+                    mUserName);
+            Method setAcctName = ReflectionUtils.getTestMethod(mAuthRequest,
+                    "setBrokerAccountName", String.class);
+            setAcctName.invoke(mAuthRequest, mUserName);
+        }
+
+        private void setWebRequest() throws NoSuchFieldException, IllegalAccessException {
+            mWebrequest = setMockWebResponse();
+            ReflectionUtils.setFieldValue(getActivity(), "mWebRequestHandler", mWebrequest);
+        }
+
+        private void setAccountManager(Account[] accts) {
+            Account userAccount = new Account(mUserName,
+                    AuthenticationConstants.Broker.BROKER_ACCOUNT_TYPE);
+            when(mMockAct.getAccountsByType(AuthenticationConstants.Broker.BROKER_ACCOUNT_TYPE))
+                    .thenReturn(accts);
+
+        }
+
+        public void setupTokenTask(AsyncTask<String, ?, ?> tokenTask, Account[] existingAccts,
+                int callingUid) throws IllegalArgumentException, ClassNotFoundException,
+                NoSuchMethodException, InstantiationException, IllegalAccessException,
+                InvocationTargetException, NoSuchFieldException {
+            setAuthenticationRequest();
+            setWebRequest();
+            setAccountManager(existingAccts);
+
+            ReflectionUtils.setFieldValue(tokenTask, "mRequest", mAuthRequest);
+            ReflectionUtils.setFieldValue(tokenTask, "mPackageName", mTestPackageName);
+            ReflectionUtils.setFieldValue(tokenTask, "mAccountManager", mMockAct);
+            ReflectionUtils.setFieldValue(tokenTask, "mRequestHandler", mWebrequest);
+            ReflectionUtils.setFieldValue(tokenTask, "mAppCallingUID", callingUid);
+        }
+    }
+
     @SmallTest
     @UiThreadTest
-    public void testBroker_ReturnUserInfo_SingleUser() throws IllegalArgumentException,
-            NoSuchFieldException, IllegalAccessException, InvocationTargetException,
-            ClassNotFoundException, NoSuchMethodException, InstantiationException,
-            InterruptedException, ExecutionException {
+    public void testBroker_AddNewUser() throws IllegalArgumentException, NoSuchFieldException,
+            IllegalAccessException, InvocationTargetException, ClassNotFoundException,
+            NoSuchMethodException, InstantiationException, InterruptedException, ExecutionException {
         startActivity(intentToStartActivity, null, null);
         activity = getActivity();
-        String urlRequest = "http://taskapp/?code=AwABAAAAvPM1KaPlrEqdFSBzjqfTGMgw4YlsUtpp6LtqhSXUApDSgwF7HWFTPxA9ZKafC_NUbwToIMQl86JD09cKDlRI-2_oxx3o0U3cyFwBGeBvKkBDiP89zMj7hPhe6inwRgjLKbL0qla6OIV9gm54_rrCow3G1bWsH5zuXM3j5YWNV-e9K14G6r6B9Z8etd0a_CgNO7_GkleEHw3voXbJL7v8eeW74tLHHSA46wO0T8JRrnhrUydHGzCSLDJQaYyL5FlQQhkZcN5L6I0G472VEpXNwaviEAkNNcg3BPfe2PUswjwM_OqUBz5xE6KwqJ40GQS53eghcVeZNEUNZXG0KzKbxwDgsPFNQ6XZcaK0uZGmzRm8z8xz9hqfPEJtAl7kAhJ1tltL0nuC-0VoyBEdMLo2JyAA&state=YT1odHRwczovL2xvZ2luLndpbmRvd3MubmV0L29tZXJjYW50ZXN0Lm9ubWljcm9zb2Z0LmNvbSZyPWh0dHBzOi8vb21lcmNhbnRlc3Qub25taWNyb3NvZnQuY29tL0FsbEhhbmRzVHJ5&session_state=cba8edc9-91b8-4bb9-8510-2ff9db663258";
-        MockWebRequestHandler webrequest = setMockWebResponse();
-        ReflectionUtils.setFieldValue(activity, "mWebRequestHandler", webrequest);
-        Object authRequest = AuthenticationContextTest.createAuthenticationRequest(
-                "https://login.windows.net/test.test.com",
-                "https://omercantest.onmicrosoft.com/AllHandsTry", "client", "redirect",
-                "different@aaltests.onmicrosoft.com");
+        BrokerTest test = new BrokerTest();
         AsyncTask<String, ?, ?> tokenTask = (AsyncTask<String, ?, ?>)getTokenTask();
+        test.setupTokenTask(tokenTask, new Account[] {}, 22);
+
         Method executeDirect = ReflectionUtils.getTestMethod(tokenTask, "doInBackground",
                 String[].class);
         Method executePostResult = ReflectionUtils.getTestMethod(tokenTask, "onPostExecute",
                 Class.forName("com.microsoft.aad.adal.AuthenticationActivity$TokenTaskResult"));
-        AccountManager mockAct = mock(AccountManager.class);
-        when(mockAct.getAccountsByType(AuthenticationConstants.Broker.BROKER_ACCOUNT_TYPE))
-                .thenReturn(null);
-        ReflectionUtils.setFieldValue(tokenTask, "mRequest", authRequest);
-        ReflectionUtils.setFieldValue(tokenTask, "mPackageName", "testpackagename");
-        ReflectionUtils.setFieldValue(tokenTask, "mAccountManager", mockAct);
-        ReflectionUtils.setFieldValue(tokenTask, "mRequestHandler", webrequest);
-        ReflectionUtils.setFieldValue(tokenTask, "mAppCallingUID", 333);
+
         Object result = executeDirect.invoke(tokenTask, (Object)new String[] {
-            urlRequest
+            "http://taskapp/?code=ABC&state=YT1odHRwczovL2xvZ2luLndpbmRvd3MubmV0L29tZXJjYW50ZXN0Lm9ubWljcm9zb2Z0LmNvbSZyPWh0dHBzOi8vb21lcmNhbnRlc3Qub25taWNyb3NvZnQuY29tL0FsbEhhbmRzVHJ5"
         });
 
         executePostResult.invoke(tokenTask, result);
 
         // Verification from returned intent data
-        Intent data = assertFinishCalledWithResult(AuthenticationConstants.UIResponse.BROWSER_CODE_ERROR);
-        assertTrue("Returns error about user",
-                data.getStringExtra(AuthenticationConstants.Browser.RESPONSE_ERROR_MESSAGE)
-                        .contains(ADALError.BROKER_SINGLE_USER_EXPECTED.getDescription()));
-
+        Intent data = assertFinishCalledWithResult(AuthenticationConstants.UIResponse.TOKEN_BROKER_RESPONSE);
+        assertEquals("token is same in the result", "TokentestBroker",
+                data.getStringExtra(AuthenticationConstants.Broker.ACCOUNT_ACCESS_TOKEN));
+        assertEquals("Name is same in the result", "admin@aaltests.onmicrosoft.com",
+                data.getStringExtra(AuthenticationConstants.Broker.ACCOUNT_NAME));
+        assertEquals("UserId is same in the result", "4f859989-a2ff-411e-9048-c322247ac62c",
+                data.getStringExtra(AuthenticationConstants.Broker.ACCOUNT_USERINFO_USERID));
+        assertEquals(
+                "UserId is same in the result",
+                "admin@aaltests.onmicrosoft.com",
+                data.getStringExtra(AuthenticationConstants.Broker.ACCOUNT_USERINFO_USERID_DISPLAYABLE));
+        assertNotNull(data
+                .getStringExtra(AuthenticationConstants.Broker.ACCOUNT_USERINFO_GIVEN_NAME));
+        assertNotNull(data
+                .getStringExtra(AuthenticationConstants.Broker.ACCOUNT_USERINFO_FAMILY_NAME));
     }
+
 
     @SmallTest
     @UiThreadTest
@@ -352,35 +415,18 @@ public class AuthenticationActivityUnitTest extends ActivityUnitTestCase<Authent
         startActivity(intentToStartActivity, null, null);
         activity = getActivity();
         String urlRequest = "http://taskapp/?code=AwABAAAAvPM1KaPlrEqdFSBzjqfTGMgw4YlsUtpp6LtqhSXUApDSgwF7HWFTPxA9ZKafC_NUbwToIMQl86JD09cKDlRI-2_oxx3o0U3cyFwBGeBvKkBDiP89zMj7hPhe6inwRgjLKbL0qla6OIV9gm54_rrCow3G1bWsH5zuXM3j5YWNV-e9K14G6r6B9Z8etd0a_CgNO7_GkleEHw3voXbJL7v8eeW74tLHHSA46wO0T8JRrnhrUydHGzCSLDJQaYyL5FlQQhkZcN5L6I0G472VEpXNwaviEAkNNcg3BPfe2PUswjwM_OqUBz5xE6KwqJ40GQS53eghcVeZNEUNZXG0KzKbxwDgsPFNQ6XZcaK0uZGmzRm8z8xz9hqfPEJtAl7kAhJ1tltL0nuC-0VoyBEdMLo2JyAA&state=YT1odHRwczovL2xvZ2luLndpbmRvd3MubmV0L29tZXJjYW50ZXN0Lm9ubWljcm9zb2Z0LmNvbSZyPWh0dHBzOi8vb21lcmNhbnRlc3Qub25taWNyb3NvZnQuY29tL0FsbEhhbmRzVHJ5&session_state=cba8edc9-91b8-4bb9-8510-2ff9db663258";
-        MockWebRequestHandler webrequest = setMockWebResponse();
-        String username = "admin@aaltests.onmicrosoft.com";
-        Object authRequest = AuthenticationContextTest.createAuthenticationRequest(
-                "https://login.windows.net/test.test.com",
-                "https://omercantest.onmicrosoft.com/AllHandsTry", "client", "redirect", username);
-        Method setAcctName = ReflectionUtils.getTestMethod(authRequest, "setBrokerAccountName",
-                String.class);
-        setAcctName.invoke(authRequest, username);
+        BrokerTest test = new BrokerTest();
         AsyncTask<String, ?, ?> tokenTask = (AsyncTask<String, ?, ?>)getTokenTask();
+        test.setupTokenTask(tokenTask, new Account[] {test.mDefaultAccount}, 22);
+
         Method executeDirect = ReflectionUtils.getTestMethod(tokenTask, "doInBackground",
                 String[].class);
         Method executePostResult = ReflectionUtils.getTestMethod(tokenTask, "onPostExecute",
                 Class.forName("com.microsoft.aad.adal.AuthenticationActivity$TokenTaskResult"));
-        AccountManager mockAct = mock(AccountManager.class);
-        when(
-                mockAct.getUserData(any(Account.class),
+        when(test.mMockAct.getUserData(any(Account.class),
                         eq(AuthenticationConstants.Broker.USERDATA_CALLER_CACHEKEYS + 333)))
                 .thenReturn("test");
-        Account userAccount = new Account(username,
-                AuthenticationConstants.Broker.BROKER_ACCOUNT_TYPE);
-        when(mockAct.getAccountsByType(AuthenticationConstants.Broker.BROKER_ACCOUNT_TYPE))
-                .thenReturn(new Account[] {
-                    userAccount
-                });
-        ReflectionUtils.setFieldValue(tokenTask, "mRequest", authRequest);
-        ReflectionUtils.setFieldValue(tokenTask, "mPackageName", "testpackagename");
-        ReflectionUtils.setFieldValue(tokenTask, "mAccountManager", mockAct);
-        ReflectionUtils.setFieldValue(tokenTask, "mRequestHandler", webrequest);
-        ReflectionUtils.setFieldValue(tokenTask, "mAppCallingUID", 333);
+
         Object result = executeDirect.invoke(tokenTask, (Object)new String[] {
             urlRequest
         });
@@ -389,7 +435,7 @@ public class AuthenticationActivityUnitTest extends ActivityUnitTestCase<Authent
 
         // Verification from returned intent data
         Intent data = assertFinishCalledWithResult(AuthenticationConstants.UIResponse.TOKEN_BROKER_RESPONSE);
-        verify(mockAct, times(8)).setUserData(any(Account.class), anyString(), anyString());
+        verify(test.mMockAct, times(8)).setUserData(any(Account.class), anyString(), anyString());
     }
 
     private MockWebRequestHandler setMockWebResponse() throws NoSuchFieldException,
@@ -433,7 +479,7 @@ public class AuthenticationActivityUnitTest extends ActivityUnitTestCase<Authent
             InvocationTargetException, NoSuchFieldException, InterruptedException {
         startActivity(intentToStartActivity, null, null);
         activity = getActivity();
-        
+
         activity.onBackPressed();
 
         assertTrue(isFinishCalled());
