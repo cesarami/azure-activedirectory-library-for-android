@@ -162,6 +162,15 @@ class Oauth2 {
 
                 AuthenticationConstants.OAuth2.REDIRECT_URI,
                 StringExtensions.URLFormEncode(mRequest.getRedirectUri()));
+        
+        if (!StringExtensions.IsNullOrBlank(mRequest.getExtraQueryParamsAuthentication())) {
+            String params = mRequest.getExtraQueryParamsAuthentication();
+            if (!params.startsWith("&")) {
+                params = "&" + params;
+            }
+            message += params;
+        }
+        
         return message;
     }
 
