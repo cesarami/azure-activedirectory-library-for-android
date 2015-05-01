@@ -81,7 +81,13 @@ class Oauth2 {
     }
 
     public String getTokenEndpoint() {
-        return mRequest.getAuthority() + DEFAULT_TOKEN_ENDPOINT;
+        String endpoint = mRequest.getAuthority() + DEFAULT_TOKEN_ENDPOINT;
+        
+        if (!StringExtensions.IsNullOrBlank(mRequest.getExtraQueryParamsAuthentication())) {
+            endpoint += "?" + mRequest.getExtraQueryParamsAuthentication();
+        }
+        
+        return endpoint;
     }
 
     public String getAuthorizationEndpointQueryParameters() throws UnsupportedEncodingException {
@@ -162,14 +168,6 @@ class Oauth2 {
 
                 AuthenticationConstants.OAuth2.REDIRECT_URI,
                 StringExtensions.URLFormEncode(mRequest.getRedirectUri()));
-        
-        if (!StringExtensions.IsNullOrBlank(mRequest.getExtraQueryParamsAuthentication())) {
-            String params = mRequest.getExtraQueryParamsAuthentication();
-            if (!params.startsWith("&")) {
-                params = "&" + params;
-            }
-            message += params;
-        }
         
         return message;
     }
